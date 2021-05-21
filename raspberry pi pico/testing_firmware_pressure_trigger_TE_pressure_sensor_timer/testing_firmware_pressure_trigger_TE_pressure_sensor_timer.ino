@@ -2,7 +2,7 @@
 #include "sfm3019.h"
 
 #define TESTING_MODE true
-#define MEASURE_FLOW true
+#define MEASURE_FLOW false
 #define USE_PYTHON_GUI true
 
 // timing
@@ -64,7 +64,12 @@ uint32_t timestamp = 0;
 // trigger settings
 float dp_start_flow = -0.07;
 float dp_stop_flow = -0.12; // dp_stop_flow should be smaller than dp_start_flow
-static const unsigned long flow_on_time_min_us = 50000;
+
+// protection against falsely turning of the flow when inhalation starts and falsely turning on the flow when inhalation ends
+static const unsigned long flow_on_time_min_us = 50*1000;
+static const unsigned long flow_off_time_min_us = 50*1000;
+
+// add protection against false triggering: trade off between delay and sensitivity
 
 // maxt rr setting
 static const float rr_max = 40;
@@ -168,7 +173,7 @@ void loop()
     measured_pressure = float(constrain(raw_data, _output_min, _output_max) - _output_min) * (_p_max - _p_min) / (_output_max - _output_min) + _p_min;
     
     // starting the flow
-    if ( measured_pressure - pressuer_sensor_offset < dp_start_flow && flag_pulse_started == false && time_since_flow_started >= 1000*1000*(60/rr_max) )
+    if ( measured_pressure - pressuer_sensor_offset < dp_start_flow && flag_pulse_started == false && time_since_flow_started >= 1000*1000*(60/rr_max) && time_since_flow_stopped >= flow_off_time_min_us )
     {
       flag_pulse_started = true;
       flag_ready_to_stop_flow = false;
