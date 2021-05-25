@@ -46,7 +46,6 @@ int _error = 0;
 
 // flags
 bool flag_pulse_started = false;
-bool flag_ready_to_stop_flow = false;
 int buffer_rx_ptr;
 int buffer_tx_ptr;
 
@@ -185,7 +184,6 @@ void loop()
     if ( measured_pressure - pressuer_sensor_offset < dp_start_flow && flag_pulse_started == false && time_since_flow_started >= 1000*1000*(60/rr_max) && time_since_flow_stopped >= flow_off_time_min_us )
     {
       flag_pulse_started = true;
-      flag_ready_to_stop_flow = false;
       digitalWrite(pin_valve, LOW);
       digitalWrite(pin_led, HIGH);
       digitalWrite(LED_BUILTIN, HIGH);
@@ -239,7 +237,6 @@ void loop()
       digitalWrite(pin_led, LOW);
       digitalWrite(LED_BUILTIN, LOW);
       flag_pulse_started = false;
-      flag_ready_to_stop_flow = false;
       flow = 0;
     }
 
