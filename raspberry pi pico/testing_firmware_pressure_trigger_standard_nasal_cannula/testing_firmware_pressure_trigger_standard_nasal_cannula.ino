@@ -5,6 +5,15 @@
 #define MEASURE_FLOW false
 #define USE_PYTHON_GUI true
 
+// RR calculation
+static const int number_of_breaths_used_for_calculating_RR = 5;
+float breath_length_ms_circular_buffer[number_of_breaths_used_for_calculating_RR];
+int breath_lenth_ptr = 0;
+bool flag_breath_length_ms_circular_buffer_full = false;
+bool first_breath_done = false;
+float RR = 20;
+float flow_on_time_ms = 1000; // default value to start with
+
 // timing
 static const unsigned long TIME_INTERVAL_US = 5000;
 unsigned long timestamp_last_cycle = 0;
@@ -43,7 +52,6 @@ int buffer_tx_ptr;
 
 // timing
 unsigned long timestamp_trigger = 0;
-unsigned long timestamp_flow_stopped = 0;
 unsigned long time_since_flow_started = 0;
 unsigned long time_since_flow_stopped = 0;
 
@@ -101,9 +109,11 @@ void setup()
   pinMode(pin_valve, OUTPUT);
   pinMode(pin_led, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(pin_valve, LOW);
-  digitalWrite(pin_led, HIGH);
-  digitalWrite(LED_BUILTIN, HIGH);
+
+  // start with no flow
+  digitalWrite(pin_valve, HIGH);
+  digitalWrite(pin_led, LOW);
+  digitalWrite(LED_BUILTIN, LOW);
 
   if(TESTING_MODE)
     Serial.begin(20000000); // start Serial communication - for testing only
@@ -160,7 +170,6 @@ void loop()
   
     // timing updates
     time_since_flow_started = micros() - timestamp_trigger;
-    time_since_flow_stopped = micros() - timestamp_flow_stopped;
   
     // read pressure sensor
     Wire.requestFrom(TE_sensor_addr,0);
@@ -171,7 +180,7 @@ void loop()
       return; // pressure sensor reading error
     uint16_t raw_data = (byte1 << 8 | byte2);
     measured_pressure = float(constrain(raw_data, _output_min, _output_max) - _output_min) * (_p_max - _p_min) / (_output_max - _output_min) + _p_min;
-    
+
     // starting the flow
     if ( measured_pressure - pressuer_sensor_offset < dp_start_flow && flag_pulse_started == false && time_since_flow_started >= 1000*1000*(60/rr_max) && time_since_flow_stopped >= flow_off_time_min_us )
     {
@@ -182,20 +191,53 @@ void loop()
       digitalWrite(LED_BUILTIN, HIGH);
       timestamp_trigger = micros();
       flow = 1;
+
+      // start registering the breath length after the first breath is taken
+      if(first_breath_done)
+      {
+        breath_length_ms_circular_buffer[breath_lenth_ptr] = time_since_flow_started/1000; // note that time_since_flow_started refers to the last trigger
+        breath_lenth_ptr = breath_lenth_ptr + 1;
+  
+        // round the pointer, and register the first time when the buffer is full
+        if(number_of_breaths_used_for_calculating_RR==breath_lenth_ptr)
+        {
+          if(flag_breath_length_ms_circular_buffer_full==false)
+            flag_breath_length_ms_circular_buffer_full = true;
+          breath_lenth_ptr = 0;
+        }
+        
+        // caculate average RR
+        if(flag_breath_length_ms_circular_buffer_full==false)
+        {
+          float tmp = 0;
+          for(int i=0;i<breath_lenth_ptr;i++)
+            tmp = tmp + breath_length_ms_circular_buffer[i];
+          RR = 60/((tmp/breath_lenth_ptr)/1000);
+        }
+        else
+        {
+          float tmp = 0;
+          for(int i=0;i<number_of_breaths_used_for_calculating_RR;i++)
+            tmp = tmp + breath_length_ms_circular_buffer[i];
+          RR = 60/((tmp/number_of_breaths_used_for_calculating_RR)/1000);
+        }
+      }
+  
+      // determine the I:E and flow on time based on RR
+      if(first_breath_done)
+        flow_on_time_ms = (60/RR)*1000*0.3; // assuming I:E ratio of 0.3:0.7 - to be replaced with RR dependent I:E
+      
+      if(first_breath_done==false)
+        first_breath_done = true;
+      
     }
   
-    // arming for stopping the flow - needed if dp_stop_flow < dp_start_flow
-    // if ( flag_pulse_started && measured_pressure - pressuer_sensor_offset < dp_stop_flow * 1.05)
-    if ( flag_pulse_started && measured_pressure - pressuer_sensor_offset < dp_stop_flow * 1.05 && time_since_flow_started >= flow_on_time_min_us)
-       flag_ready_to_stop_flow = true;
-  
     // stop the flow
-    if (flag_ready_to_stop_flow && measured_pressure - pressuer_sensor_offset > dp_stop_flow)
+    if (time_since_flow_started >= flow_on_time_ms)
     {
       digitalWrite(pin_valve, HIGH);
       digitalWrite(pin_led, LOW);
       digitalWrite(LED_BUILTIN, LOW);
-      timestamp_flow_stopped = micros();
       flag_pulse_started = false;
       flag_ready_to_stop_flow = false;
       flow = 0;
