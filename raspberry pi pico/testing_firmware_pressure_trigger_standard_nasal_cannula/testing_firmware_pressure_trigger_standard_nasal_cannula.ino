@@ -6,7 +6,7 @@
 #define USE_PYTHON_GUI true
 
 // RR calculation
-static const int number_of_breaths_used_for_calculating_RR = 5;
+static const int number_of_breaths_used_for_calculating_RR = 3;
 float breath_length_ms_circular_buffer[number_of_breaths_used_for_calculating_RR];
 int breath_lenth_ptr = 0;
 bool flag_breath_length_ms_circular_buffer_full = false;
@@ -51,6 +51,7 @@ int buffer_tx_ptr;
 
 // timing
 unsigned long timestamp_trigger = 0;
+unsigned long timestamp_flow_stopped = 0;
 unsigned long time_since_flow_started = 0;
 unsigned long time_since_flow_stopped = 0;
 
@@ -169,6 +170,7 @@ void loop()
   
     // timing updates
     time_since_flow_started = micros() - timestamp_trigger;
+    time_since_flow_stopped = micros() - timestamp_flow_stopped;
   
     // read pressure sensor
     Wire.requestFrom(TE_sensor_addr,0);
@@ -223,19 +225,22 @@ void loop()
   
       // determine the I:E and flow on time based on RR
       if(first_breath_done)
-        flow_on_time_ms = (60/RR)*1000*0.3; // assuming I:E ratio of 0.3:0.7 - to be replaced with RR dependent I:E
+        flow_on_time_ms = (60/RR)*1000*0.4; // assuming I:E ratio of 0.3:0.7 - to be replaced with RR dependent I:E
       
       if(first_breath_done==false)
         first_breath_done = true;
+
+      time_since_flow_started = 0;
       
     }
   
     // stop the flow
-    if (time_since_flow_started >= flow_on_time_ms)
+    if (time_since_flow_started >= flow_on_time_ms*1000 && flag_pulse_started == true)
     {
       digitalWrite(pin_valve, HIGH);
       digitalWrite(pin_led, LOW);
       digitalWrite(LED_BUILTIN, LOW);
+      timestamp_flow_stopped = micros();
       flag_pulse_started = false;
       flow = 0;
     }
@@ -274,6 +279,25 @@ void loop()
       }
       else
       {
+//        Serial.print("\t 1000*1000*(60/rr_max): ");
+//        Serial.print(1000*1000*(60/rr_max));        Serial.print("flag_pulse_started: ");
+//        Serial.print(flag_pulse_started);
+//        Serial.print("\t");
+        
+//        Serial.print("\t time_since_flow_started/stopped (ms): ");
+
+//        Serial.print(double(time_since_flow_started)/1000);
+//        Serial.print("/");
+//        Serial.print(double(time_since_flow_stopped)/1000);
+        
+//        Serial.print("\t");
+//        Serial.print(float(time_since_flow_started)/1000);
+//        Serial.print("/");
+//        Serial.print(flow_on_time_ms);
+
+        Serial.print("\t RR (bpm): ");
+        Serial.print(RR);
+        Serial.print('\t');
         Serial.print(flow);
         Serial.print('\t');
         Serial.println(10*(measured_pressure-pressuer_sensor_offset));
