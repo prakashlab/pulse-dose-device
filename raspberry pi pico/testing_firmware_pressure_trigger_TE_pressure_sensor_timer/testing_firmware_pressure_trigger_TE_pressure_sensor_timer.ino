@@ -3,7 +3,7 @@
 
 #define TESTING_MODE true
 #define MEASURE_FLOW false
-#define USE_PYTHON_GUI true
+#define USE_PYTHON_GUI false
 
 // timing
 static const unsigned long TIME_INTERVAL_US = 5000;
